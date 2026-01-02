@@ -55,6 +55,7 @@ public partial class WorldGenerator : Node
     // --- REFERENCES ---
     [Export] private NodePath tilemapGroundPath;
     private TileMapLayer _tilemapGround;
+    private WorldData _world;
     
     // Optional seed to repeat worlds (0 = random)
     [Export] private int _seed = 0;
@@ -109,6 +110,9 @@ public partial class WorldGenerator : Node
         // Clear previous tiles
         _tilemapGround.Clear();
 
+        // Create world data store
+        _world = new WorldData(WORLD_WIDTH, WORLD_HEIGHT);
+
         // Build surface heightmap (one Y value per X column)
         _surfaceY = BuildSurfaceHeightmap();
 
@@ -122,12 +126,16 @@ public partial class WorldGenerator : Node
                 // Bedrock zone at bottom of the world
                 if (y >= WORLD_HEIGHT - BEDROCK_THICKNESS)
                 {
-                    SetTile(x, y, BEDROCK_ATLAS);
+                    _world.SetTerrain(x, y, TileIds.BEDROCK);
                     continue;
                 }
 
                 // Above surface is air (no tile placed)
-                if (y < surface) continue;
+                if (y < surface)
+                {
+                    _world.SetTerrain(x, y, TileIds.AIR);
+                    continue;
+                }
 
                 // Depth below surface
                 int depthBelowSurface = y - surface;
@@ -135,14 +143,37 @@ public partial class WorldGenerator : Node
                 // Dirt layer
                 if (depthBelowSurface <= DIRT_DEPTH)
                 {
-                    SetTile(x, y, DIRT_ATLAS);
+                    _world.SetTerrain(x, y, TileIds.DIRT);
                 }
                 else
                 {
-                    SetTile(x, y, STONE_ATLAS);
+                    _world.SetTerrain(x, y, TileIds.STONE);
                 }
             }
         }
+        RenderAllFromWorldData();
+    }
+
+    private void RenderAllFromWorldData()
+    {
+        _tilemapGround.Clear();
+
+        for (int x = 0; x < WORLD_WIDTH; x++)
+            for (int y = 0; y < WORLD_HEIGHT; y++)
+            {
+                ushort id = _world.GetTerrain(x, y);
+                if (id == TileIds.AIR) continue;
+
+                Vector2I atlas = id switch
+                {
+                    TileIds.DIRT => DIRT_ATLAS,
+                    TileIds.STONE => STONE_ATLAS,
+                    TileIds.BEDROCK => BEDROCK_ATLAS,
+                    _ => DIRT_ATLAS
+                };
+
+                _tilemapGround.SetCell(new Vector2I(x, y), SOURCE_ID, atlas);
+            }
     }
 
     private void SpawnPlayerOnSurface()
@@ -227,37 +258,48 @@ public partial class WorldGenerator : Node
             heights[x] = current;
         }
 
+        // Seamless ends
+        MakeHeightmapSeamless(heights);
+
         // Smooth the heightmap to reduce jaggedness
         for (int pass = 0; pass < SMOOTHING_PASSES; pass++)
         {
             heights = SmoothHeightmap(heights);
+            MakeHeightmapSeamless(heights);
         }
 
         return heights;
     }
 
-    /// <summary>
-    /// Smooths a heightmap by averaging each point with its immediate neighbours
+    //// <summary>
+    /// Smooths a heightmap by averaging each point with its immediate neighbours,
+    /// treating the array as CIRCULAR so x=0 neighbours x=last (wraparound planet).
     /// </summary>
     private int[] SmoothHeightmap(int[] input)
     {
         int[] output = new int[input.Length];
+        int lastIndex = input.Length - 1;
 
         for (int x = 0; x < input.Length; x++)
         {
-            int left = input[Mathf.Max(0, x - 1)];
+            // Wrap neighbours so the seam is smoothed consistently.
+            int leftIndex = (x == 0) ? lastIndex : (x - 1);
+            int rightIndex = (x == lastIndex) ? 0 : (x + 1);
+
+            int left = input[leftIndex];
             int mid = input[x];
-            int right = input[Mathf.Min(input.Length - 1, x + 1)];
+            int right = input[rightIndex];
 
             // Average and round
             int avg = Mathf.RoundToInt((left + mid + right) / 3.0f);
 
-            // Keep withi bounds
+            // Keep within bounds
             output[x] = Mathf.Clamp(avg, MIN_SURFACE_Y, MAX_SURFACE_Y);
         }
 
         return output;
     }
+
 
     /// <summary>
     /// Sets a single tile in the TileMapLayer at cell (x,y) using atlas coords
@@ -267,5 +309,30 @@ public partial class WorldGenerator : Node
         // TileMapLayer represents a single layer, so there's no layer index parameter
         // For atlas tiles: SetCell(coords, sourceId, atlasCoords, alternativeTile)
         _tilemapGround.SetCell(new Vector2I(x, y), SOURCE_ID, atlasCoords);
+    }
+
+    /// <summary>
+    /// Forces the heightmap to be seamless by removing the height difference between the first and last column.
+    /// This prevents a "step" at the wrap seam (x=0 <-> x=WORLD_WIDTH-1).
+    /// </summary>
+    private void MakeHeightmapSeamless(int[] heights)
+    {
+        // If the endpoints already match, we're done.
+        int lastIndex = heights.Length - 1;
+        int delta = heights[lastIndex] - heights[0];
+        if (delta == 0) return;
+
+        // Linearly distribute the delta across the whole width so the last equals the first.
+        // This avoids a hard correction at just one column.
+        for (int x = 0; x < heights.Length; x++)
+        {
+            float t = (heights.Length == 1) ? 0f : (x / (float)lastIndex);
+            int offset = Mathf.RoundToInt(delta * t);
+
+            heights[x] = Mathf.Clamp(heights[x] - offset, MIN_SURFACE_Y, MAX_SURFACE_Y);
+        }
+
+        // Ensure exact equality at the seam after rounding/clamping.
+        heights[lastIndex] = heights[0];
     }
 }

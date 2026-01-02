@@ -96,7 +96,7 @@ public partial class SpringCamera2D : Camera2D
         return output;
     }
 
-    private void SnapNow()
+    public void SnapNow()
     {
         if (_player == null)
         {
@@ -105,6 +105,7 @@ public partial class SpringCamera2D : Camera2D
         }
 
         GlobalPosition = _player.GlobalPosition;
-        GD.Print($"SpringCamera2D snapped to player at {GlobalPosition}");
+        _velocity = Vector2.Zero;
+        ResetPhysicsInterpolation();
     }
 }
