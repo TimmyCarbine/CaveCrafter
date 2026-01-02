@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://bawf4q07xukbw"]
+[gd_scene load_steps=11 format=3 uid="uid://bawf4q07xukbw"]
 
 [ext_resource type="PackedScene" uid="uid://cijtbnt6jvk5n" path="res://Scenes/UI.tscn" id="1_5cjrv"]
 [ext_resource type="Texture2D" uid="uid://by815yj3t82ea" path="res://Assets/Tiles/TerrainTiles.png" id="1_5nsto"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://dep0saoy3vw66" path="res://Scripts/WorldGenerator.cs" id="1_j0p05"]
 [ext_resource type="Script" uid="uid://bo1ox77e1twpo" path="res://Scripts/PlayerController.cs" id="2_gjpho"]
 [ext_resource type="Script" uid="uid://bhacfgukroyea" path="res://Scripts/SpringCamera2D.cs" id="3_p70al"]
+[ext_resource type="Script" uid="uid://8ksf8ok1lr8q" path="res://Scripts/BlockEditController.cs" id="6_y7y61"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_5nsto"]
 texture = ExtResource("1_5nsto")
@@ -64,6 +65,10 @@ _player = NodePath("../../Entities/Player")
 _camera = NodePath("../../Entities/Player/Camera2D")
 
 [node name="GameState" type="Node" parent="Systems"]
+
+[node name="BlockEditController" type="Node" parent="Systems"]
+script = ExtResource("6_y7y61")
+worldGeneratorPath = NodePath("../WorldGenerator")
 
 [node name="UI" type="CanvasLayer" parent="."]
 
