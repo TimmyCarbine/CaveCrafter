@@ -45,7 +45,13 @@ public sealed class WorldData
         int chunkX = x / WorldConstants.CHUNK_W;
         int chunkY = y / WorldConstants.CHUNK_H;
 
-        return _chunks[chunkX, chunkY];
+        ChunkData chunk = _chunks[chunkX, chunkY];
+        if(chunk == null)
+        {
+            chunk = new ChunkData(chunkX, chunkY);
+            _chunks[chunkX, chunkY] = chunk;
+        }
+        return chunk;
     }
 
     public void SetTerrain(int worldX, int worldY, ushort tileId)
@@ -72,4 +78,20 @@ public sealed class WorldData
     }
 
     public ChunkData GetChunk(int chunkX, int chunkY) => _chunks[chunkX, chunkY];
+
+    public bool IsSolid(int worldX, int worldY)
+    {
+        ushort t = GetTerrain(worldX, worldY);
+        return t != TileIds.AIR;
+    }
+
+    public void Dig(int worldX, int worldY)
+    {
+        SetTerrain(worldX, worldY, TileIds.AIR);
+    }
+
+    public void Place(int worldX, int worldY, ushort tileId)
+    {
+        SetTerrain(worldX, worldY, tileId);
+    }
 }

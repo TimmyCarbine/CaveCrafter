@@ -176,6 +176,87 @@ public partial class WorldGenerator : Node
             }
     }
 
+    private void RenderChunkSafe(int chunkX, int chunkY)
+    {
+        int wrappedX = Mathf.PosMod(chunkX, _world.ChunkCountX);
+
+        if (chunkY < 0 || chunkY >= _world.ChunkCountY) return;
+
+        RenderChunk(wrappedX, chunkY);
+    }
+
+    private void RenderChunk(int chunkX, int chunkY)
+    {
+        ChunkData chunk = _world.GetChunk(chunkX, chunkY);
+        if (chunk == null) return;
+
+        int startX = chunkX * WorldConstants.CHUNK_W;
+        int startY = chunkY * WorldConstants.CHUNK_H;
+
+        for (int ly = 0; ly < WorldConstants.CHUNK_H; ly++)
+            for (int lx = 0; lx < WorldConstants.CHUNK_W; lx++)
+            {
+                int worldX = startX + lx;
+                int worldY = startY + ly;
+
+                // Stop at actual world height (bottom padding chunks)
+                if (worldY < 0 || worldY >= WORLD_HEIGHT) continue;
+
+                if (worldX < 0 || worldX >= WORLD_WIDTH) continue;
+
+                ushort id = _world.GetTerrain(worldX, worldY);
+
+                Vector2I cell = new Vector2I(worldX, worldY);
+
+                if (id == TileIds.AIR)
+                {
+                    _tilemapGround.EraseCell(cell);
+                    continue;
+                }
+
+                Vector2I atlas = id switch
+                {
+                    TileIds.DIRT => DIRT_ATLAS,
+                    TileIds.STONE => STONE_ATLAS,
+                    TileIds.BEDROCK => BEDROCK_ATLAS,
+                    _ => DIRT_ATLAS
+                };
+
+                _tilemapGround.SetCell(cell, SOURCE_ID, atlas);
+            }
+
+            chunk.DirtyRender = false;
+    }
+
+    private void RenderDirtyChunks()
+    {
+        for (int cx = 0; cx < _world.ChunkCountX; cx++)
+            for (int cy = 0; cy < _world.ChunkCountY; cy++)
+            {
+                ChunkData c = _world.GetChunk(cx, cy);
+                if (c == null) continue;
+
+                if (c.DirtyRender)
+                    RenderChunk(cx, cy);
+            }
+    }
+
+    private void MarkAndRenderCellAndNeighbours(Vector2I cell)
+    {
+        int cx = cell.X / WorldConstants.CHUNK_W;
+        int cy = cell.Y / WorldConstants.CHUNK_H;
+
+        RenderChunkSafe(cx, cy);
+
+        int lx = Mathf.PosMod(cell.X, WorldConstants.CHUNK_W);
+        int ly = cell.Y % WorldConstants.CHUNK_H;
+
+        if (lx == 0) RenderChunkSafe(cx - 1, cy);
+        if (lx == WorldConstants.CHUNK_W - 1) RenderChunkSafe(cx + 1, cy);
+        if (ly == 0) RenderChunkSafe(cx, cy - 1);
+        if (ly == WorldConstants.CHUNK_H -1) RenderChunkSafe(cx, cy + 1);
+    }
+
     private void SpawnPlayerOnSurface()
     {
         // If there's no player assigned, just skip.
@@ -334,5 +415,32 @@ public partial class WorldGenerator : Node
 
         // Ensure exact equality at the seam after rounding/clamping.
         heights[lastIndex] = heights[0];
+    }
+
+    public Vector2I WorldToCell(Vector2 worldPos)
+    {
+        Vector2I tileSize = _tilemapGround.TileSet.TileSize;
+        int x = Mathf.FloorToInt(worldPos.X / tileSize.X);
+        int y = Mathf.FloorToInt(worldPos.Y / tileSize.Y);
+        return new Vector2I(x, y);
+    }
+
+    public void DigCell(Vector2I cell)
+    {
+        ushort t = _world.GetTerrain(cell.X, cell.Y);
+        if (t == TileIds.BEDROCK) return;
+
+        _world.Dig(cell.X, cell.Y);
+
+        MarkAndRenderCellAndNeighbours(cell);
+    }
+
+    public void PlaceCell(Vector2I cell, ushort tileId)
+    {
+        if (_world.IsSolid(cell.X, cell.Y)) return;
+
+        _world.Place(cell.X, cell.Y, tileId);
+
+        MarkAndRenderCellAndNeighbours(cell);
     }
 }
