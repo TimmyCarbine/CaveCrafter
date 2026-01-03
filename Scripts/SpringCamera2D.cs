@@ -96,6 +96,12 @@ public partial class SpringCamera2D : Camera2D
         return output;
     }
 
+    public void OnPlayerWrapped(float dx)
+    {
+        GlobalPosition += new Vector2(dx, 0f);
+        ResetPhysicsInterpolation();
+    }
+
     public void SnapNow()
     {
         if (_player == null)

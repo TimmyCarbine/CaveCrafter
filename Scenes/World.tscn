@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://bawf4q07xukbw"]
+[gd_scene load_steps=11 format=3 uid="uid://bawf4q07xukbw"]
 
 [ext_resource type="PackedScene" uid="uid://cijtbnt6jvk5n" path="res://Scenes/UI.tscn" id="1_5cjrv"]
 [ext_resource type="Script" uid="uid://bqcq6hrbugy3h" path="res://Scripts/WrapMathTester.cs" id="1_45d1s"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://8ksf8ok1lr8q" path="res://Scripts/BlockEditController.cs" id="6_y7y61"]
 [ext_resource type="Script" uid="uid://dlucb2a7xqhdp" path="res://Scripts/ChunkRenderer.cs" id="7_q2d71"]
 [ext_resource type="TileSet" uid="uid://dvakk6inkbe0i" path="res://Assets/Tiles/TerrainTileSet.tres" id="7_uo7di"]
+[ext_resource type="Script" uid="uid://drja1jdqtsinb" path="res://Scripts/FreeCameraToggle.cs" id="8_uo7di"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_o3h3i"]
 
@@ -21,6 +22,7 @@ script = ExtResource("1_45d1s")
 [node name="Player" type="CharacterBody2D" parent="Entities"]
 script = ExtResource("2_gjpho")
 WrapCooldownSeconds = 1.0
+springCameraPath = NodePath("SpringCamera2D")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Entities/Player"]
 shape = SubResource("CapsuleShape2D_o3h3i")
@@ -32,7 +34,7 @@ offset_right = 12.0
 offset_bottom = 16.0
 color = Color(0, 0.9863203, 0.9863202, 1)
 
-[node name="Camera2D" type="Camera2D" parent="Entities/Player"]
+[node name="SpringCamera2D" type="Camera2D" parent="Entities/Player"]
 zoom = Vector2(0.75, 0.75)
 limit_enabled = false
 script = ExtResource("3_p70al")
@@ -49,14 +51,23 @@ _player = NodePath("../../Entities/Player")
 script = ExtResource("6_y7y61")
 worldGeneratorPath = NodePath("../WorldGenerator")
 chunkRendererPath = NodePath("../ChunkRenderer")
-cameraPath = NodePath("../../Entities/Player/Camera2D")
+cameraPath = NodePath("../../Entities/Player/SpringCamera2D")
 
 [node name="ChunkRenderer" type="Node2D" parent="Systems"]
 script = ExtResource("7_q2d71")
 worldGeneratorPath = NodePath("../WorldGenerator")
-cameraPath = NodePath("../../Entities/Player/Camera2D")
+cameraPath = NodePath("../../Entities/Player/SpringCamera2D")
 TileSet = ExtResource("7_uo7di")
+
+[node name="FreeCameraToggle" type="Node" parent="Systems"]
+script = ExtResource("8_uo7di")
+playerControllerPath = NodePath("../../Entities/Player")
+springCameraPath = NodePath("../../Entities/Player/SpringCamera2D")
+freeCameraPath = NodePath("../../FreeCamCamera2D")
 
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="UI" parent="UI" instance=ExtResource("1_5cjrv")]
+
+[node name="FreeCamCamera2D" type="Camera2D" parent="."]
+zoom = Vector2(0.5, 0.5)

@@ -25,7 +25,7 @@ public partial class WorldGenerator : Node
     private const int MAX_STEP_DELTA = 2;
 
     // --- MATERIAL LAYERS ---
-    private const int DIRT_DEPTH = 8;                       // Tiles below surface that remain dirt
+    private const int DIRT_DEPTH = 25;                       // Tiles below surface that remain dirt
     private const int BEDROCK_THICKNESS = 3;                // Tiles at bottom that are bedrock
 
     // Optional seed to repeat worlds (0 = random)
