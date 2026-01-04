@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 /// <summary>
@@ -9,8 +10,8 @@ using Godot;
 public partial class WorldGenerator : Node
 {
     // --- WORLD SIZE (TILES) ---
-    private const int WORLD_WIDTH = 256;
-    private const int WORLD_HEIGHT = 128;
+    private const int WORLD_WIDTH = 512;
+    private const int WORLD_HEIGHT = 256;
 
     // --- SURFACE SETTINGS ---
     private const int MIN_SURFACE_Y = 20;                   // Smaller = higher surface (Godot Y grows downward)
@@ -27,6 +28,10 @@ public partial class WorldGenerator : Node
     // --- MATERIAL LAYERS ---
     private const int DIRT_DEPTH = 25;                       // Tiles below surface that remain dirt
     private const int BEDROCK_THICKNESS = 3;                // Tiles at bottom that are bedrock
+
+    private System.Collections.Generic.List<Godot.Collections.Array<Vector2>> _caveBackbonePaths = new();
+    public System.Collections.Generic.IReadOnlyList<Godot.Collections.Array<Vector2>> CaveBackbonePaths => _caveBackbonePaths;
+
 
     // Optional seed to repeat worlds (0 = random)
     [Export] private int _seed = 0;
@@ -100,6 +105,36 @@ public partial class WorldGenerator : Node
                 );
             }
         }
+
+        _caveBackbonePaths.Clear();
+
+        // --- CARVE CAVES (data-only) ---
+        var caveSettings = new CaveCarver.Settings
+        {
+            BackboneWalkers = 16,
+            StepsMin = 220,
+            StepsMax = 550,
+            MinY = MAX_SURFACE_Y - 10,
+            MaxYPadding = 8,
+            MinRadius = 1,
+            MaxRadius = 2,
+            HorizontalBias = 0.95f,
+            SlopeChance = 0.15f,
+            TurnAroundChance = 0.015f,
+            RecordPaths = true,
+            PathSampleStep = 4
+        };
+
+        CaveCarver.CarveBackbone(
+            world: _world,
+            rng: _rng,
+            worldWidthTiles: WORLD_WIDTH,
+            worldHeightTiles: WORLD_HEIGHT,
+            bedrockThickness: BEDROCK_THICKNESS,
+            s: caveSettings,
+            outPaths: _caveBackbonePaths
+        );
+
     }
 
     private void SpawnPlayerOnSurface()

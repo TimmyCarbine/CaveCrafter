@@ -15,8 +15,8 @@ public partial class ChunkRenderer : Node2D
 
     // VIEW WINDOW (in chunks) ===
     // Total rendered = (2*RadiusX+1) by (2*RadiusY +1)
-    [Export] public int RadiusChunksX = 4; // 9 Chunks Wide
-    [Export] public int RadiusChunksY = 3; // 7 Chunks High
+    [Export] public int RadiusChunksX = 5; // 2 = 5 Chunks Wide
+    [Export] public int RadiusChunksY = 3; // 1 = 3 Chunks High
 
     // === TILESET SOURCE ===
     [Export] public TileSet TileSet;

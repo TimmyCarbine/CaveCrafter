@@ -8,13 +8,17 @@ public partial class PlayerController : CharacterBody2D
 {
     // Tuning
     [Export] public float WorldOriginX = 0f;
-    [Export] public float WorldWidthPx = 8192f;
     [Export] public float WrapMarginPx = 2f;        // how far past edge before wrapping
     [Export] public float WrapCooldownSeconds = 0.1f; // prevents immediate rewrap loops
     [Export] public NodePath springCameraPath;
+    [Export] public NodePath worldGeneratorPath;
+    [Export] public NodePath chunkRendererPath;
 
+    private float WorldWidthPx;
     private float _wrapCooldown = 0f;
     private SpringCamera2D _springCam;
+    private WorldGenerator _gen;
+    private ChunkRenderer _renderer;
     private bool _controlsEnabled = true;
 
     private const float MOVE_SPEED = 220.0f;
@@ -30,6 +34,23 @@ public partial class PlayerController : CharacterBody2D
 
         _springCam = GetNodeOrNull<SpringCamera2D>(springCameraPath);
         if (_springCam == null) GD.PushError("PlayerController: springCameraPath is missing / invalid.");
+
+        _gen = GetNodeOrNull<WorldGenerator>(worldGeneratorPath);
+        _renderer = GetNodeOrNull<ChunkRenderer>(chunkRendererPath);
+        if (_gen == null)
+        {
+            GD.PushError("PlayerController: worldGeneratorPath is missing / invalid.");
+        }
+        else if (_renderer.TileSet == null)
+        {
+            GD.PushError("PlayerController: chunkRendererPath or TileSet is missing / invalid.");
+        }  
+        else
+        {
+            WorldWidthPx = _gen.WorldWidthTiles * _renderer.TileSet.TileSize.X;
+            GD.Print($"PlayerController: WorldWidthPx: {WorldWidthPx}px");
+        }
+
     }
 
     public override void _PhysicsProcess(double delta)
