@@ -1,10 +1,10 @@
 using Godot;
 
 /// <summary>
-/// CaveCarver is a pure helper that mutates WorldData to carve caves.
+/// CaveCarverBackbone is a pure helper that mutates WorldData to carve caves.
 /// It has no rendering logic or scene dependancies.
 /// </summary>
-public static class CaveCarver
+public static class CaveCarverBackbone
 {
     // === SETTINGS STRUCT ===
     public struct Settings
@@ -47,12 +47,12 @@ public static class CaveCarver
     {
         if (world == null)
         {
-            GD.PushError("CaveCarver.CarveBackbone: world is null.");
+            GD.PushError("CaveCarverBackbone.CarveBackbone: world is null.");
             return;
         }
         if (rng == null)
         {
-            GD.PushError("CaveCarver.CarveBackbone: rng is null.");
+            GD.PushError("CaveCarverBackbone.CarveBackbone: rng is null.");
             return;
         }
 
@@ -62,7 +62,7 @@ public static class CaveCarver
 
         if (minY >= maxY)
         {
-            GD.PushWarning("CaveCarver.CarveBackbone: Cave Y range invalid. Check MinY / MaxYPadding.");
+            GD.PushWarning("CaveCarverBackbone.CarveBackbone: Cave Y range invalid. Check MinY / MaxYPadding.");
             return;
         }
 
@@ -90,7 +90,7 @@ public static class CaveCarver
             for (int step = 0; step < steps; step++)
             {
                 // Carve using wrapped coordinates
-                CarveTunnelAt(world, worldWidthTiles, worldHeightTiles, bedrockThickness, x, y, radius);
+                CaveCarverHelper.CarveTunnelAt(world, worldWidthTiles, worldHeightTiles, bedrockThickness, x, y, radius);
 
                 // Record path occasionally to keep it light
                 if (shouldRecord && (step % sampleStep == 0))
@@ -123,35 +123,6 @@ public static class CaveCarver
             {
                 path.Add(new Vector2(xUnwrapped, y));
                 if (path.Count > 1) outPaths.Add(path);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Carves a small, readable tunnel cross section around (x, y).
-    /// Current profile: tall enough slightly thicker at the centre.
-    /// </summary>
-    private static void CarveTunnelAt(
-        WorldData world,
-        int worldWidthTiles,
-        int worldHeightTiles,
-        int bedrockThickness,
-        int x,
-        int y,
-        int radius)
-    {
-        for (int dy = -radius; dy <= radius; dy++)
-        {
-            int yy = y + dy;
-            if (yy < 0 || yy >= worldHeightTiles) continue;
-            if (yy >= worldHeightTiles - bedrockThickness) continue;
-
-            int thickness = (dy == 0) ? 1: 0;
-
-            for (int dx = -thickness; dx <= thickness; dx++)
-            {
-                int xx = Mathf.PosMod(x + dx, worldWidthTiles);
-                world.SetTerrain(xx, yy, TileIds.AIR);
             }
         }
     }

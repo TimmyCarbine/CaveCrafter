@@ -109,32 +109,75 @@ public partial class WorldGenerator : Node
         _caveBackbonePaths.Clear();
 
         // --- CARVE CAVES (data-only) ---
-        var caveSettings = new CaveCarver.Settings
+        var backboneSettings = new CaveCarverBackbone.Settings
         {
-            BackboneWalkers = 16,
-            StepsMin = 220,
-            StepsMax = 550,
+            BackboneWalkers = 10,
+            StepsMin = 350,
+            StepsMax = 900,
             MinY = MAX_SURFACE_Y - 10,
             MaxYPadding = 8,
             MinRadius = 1,
             MaxRadius = 2,
-            HorizontalBias = 0.95f,
-            SlopeChance = 0.15f,
-            TurnAroundChance = 0.015f,
+            HorizontalBias = 0.85f,
+            SlopeChance = 0.3f,
+            TurnAroundChance = 0.01f,
             RecordPaths = true,
             PathSampleStep = 4
         };
 
-        CaveCarver.CarveBackbone(
+        CaveCarverBackbone.CarveBackbone(
             world: _world,
             rng: _rng,
             worldWidthTiles: WORLD_WIDTH,
             worldHeightTiles: WORLD_HEIGHT,
             bedrockThickness: BEDROCK_THICKNESS,
-            s: caveSettings,
+            s: backboneSettings,
             outPaths: _caveBackbonePaths
         );
 
+        var connectorSettings = new CaveCarverConnectors.Settings
+        {
+            Connectors = 50,
+            MaxLength = 26,
+            VerticalPhaseRatio = 0.65f,
+            SearchRadiusForStart = 3,
+            MaxStartSearchTries = 40,
+            Radius = 1,
+            MinY = backboneSettings.MinY,
+            MaxYPadding = backboneSettings.MaxYPadding
+        };
+
+        CaveCarverConnectors.CarveConnectors(
+            world: _world,
+            rng: _rng,
+            worldWidthTiles: WORLD_WIDTH,
+            worldHeightTiles: WORLD_HEIGHT,
+            bedrockThickness: BEDROCK_THICKNESS,
+            s: connectorSettings
+        );
+
+        var branchSettings = new CaveCarverBranches.Settings
+        {
+            Branches = 140,
+            MinLength = 10,
+            MaxLength = 45,
+            HorizontalBias = 0.78f,
+            SlopeChance = 0.06f,
+            SearchRadiusForStart = 3,
+            MaxStartSearchTries = 60,
+            Radius = 1,
+            MinY = backboneSettings.MinY,
+            MaxYPadding = backboneSettings.MaxYPadding            
+        };
+
+        CaveCarverBranches.CarveBranches(
+            world: _world,
+            rng: _rng,
+            worldWidthTiles: WORLD_WIDTH,
+            worldHeightTiles: WORLD_HEIGHT,
+            bedrockThickness: BEDROCK_THICKNESS,
+            s: branchSettings
+        );
     }
 
     private void SpawnPlayerOnSurface()
