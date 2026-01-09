@@ -9,6 +9,11 @@ public partial class FreeCameraToggle : Node
     [Export] public float FreeCamSpeedPxPerSec = 1200f;
     [Export] public float FastMultiplier = 2.5f;
 
+    // --- ZOOM SETTINGS ---
+    [Export] public float MinZoom = 0.25f;   // Zoomed-in limit
+    [Export] public float MaxZoom = 4.0f;    // Zoomed-out limit
+    [Export] public float ZoomStep = 0.1f;   // Per wheel notch
+
     private PlayerController _player;
     private Camera2D _springCam;
     private Camera2D _freeCam;
@@ -34,10 +39,27 @@ public partial class FreeCameraToggle : Node
 
     public override void _UnhandledInput(InputEvent e)
     {
+        // Toggle freecam
         if (e.IsActionPressed("toggle_free_cam"))
         {
             Toggle();
             GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        // Mouse wheel zoom (freecam only)
+        if (_freeCamActive && e is InputEventMouseButton mouseButton && mouseButton.Pressed)
+        {
+            if (mouseButton.ButtonIndex == MouseButton.WheelDown)
+            {
+                ApplyZoom(Input.IsActionPressed("free_cam_fast") ? -ZoomStep * FastMultiplier : -ZoomStep);
+                GetViewport().SetInputAsHandled();
+            }
+            else if (mouseButton.ButtonIndex == MouseButton.WheelUp)
+            {
+                ApplyZoom(Input.IsActionPressed("free_cam_fast") ? +ZoomStep * FastMultiplier : +ZoomStep);
+                GetViewport().SetInputAsHandled();
+            }
         }
     }
 
@@ -71,18 +93,31 @@ public partial class FreeCameraToggle : Node
         if (_freeCamActive)
         {
             if (_springCam != null && _freeCam != null)
+            {
+                // Match position + zoom so there is no visual pop
                 _freeCam.GlobalPosition = _springCam.GlobalPosition;
+                _freeCam.Zoom = _springCam.Zoom;
+            }
 
             _freeCam?.MakeCurrent();
             SetPlayerControlsEnabled(false);
         }
         else
         {
-            _springCam.MakeCurrent();
+            _springCam?.MakeCurrent();
             SetPlayerControlsEnabled(true);
-
             _springCam?.ResetPhysicsInterpolation();
         }
+    }
+
+    private void ApplyZoom(float delta)
+    {
+        if (_freeCam == null) return;
+
+        float current = _freeCam.Zoom.X;
+        float target = Mathf.Clamp(current + delta, MinZoom, MaxZoom);
+
+        _freeCam.Zoom = new Vector2(target, target);
     }
 
     private void SetPlayerControlsEnabled(bool enabled)

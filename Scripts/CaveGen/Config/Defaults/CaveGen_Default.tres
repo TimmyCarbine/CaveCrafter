@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CaveGenConfigResource" load_steps=6 format=3 uid="uid://dgqid16xohs7n"]
+
+[ext_resource type="Script" uid="uid://2b1vackav1ru" path="res://Scripts/CaveGen/Config/TunnelClassConfigResource.cs" id="1_62epe"]
+[ext_resource type="Script" uid="uid://dhetd4u6mbpwn" path="res://Scripts/CaveGen/Config/CaveGenConfigResource.cs" id="2_o80mk"]
+
+[sub_resource type="Resource" id="Resource_62epe"]
+script = ExtResource("1_62epe")
+
+[sub_resource type="Resource" id="Resource_o80mk"]
+script = ExtResource("1_62epe")
+EndYMinFrac = 0.9
+EndYMaxFrac = 0.99
+MinAngleDeg = 10.0
+MaxAngleDeg = 30.0
+metadata/_custom_type_script = "uid://2b1vackav1ru"
+
+[sub_resource type="Resource" id="Resource_hlniv"]
+script = ExtResource("1_62epe")
+
+[resource]
+script = ExtResource("2_o80mk")
+Highway = SubResource("Resource_o80mk")
+metadata/_custom_type_script = "uid://dhetd4u6mbpwn"

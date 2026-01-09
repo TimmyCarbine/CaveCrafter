@@ -1,12 +1,22 @@
-using System;
+using CaveCrafter.CaveGen.Api;
+using CaveCrafter.CaveGen.Config;
+using CaveCrafter.CaveGen.Debug;
 using Godot;
 
 /// <summary>
 /// DATA-ONLY world generation.
 /// Generates tiles into WorldData (chunked store).
 /// Rendering is handled exclusively by ChunkRenderer.
+///
+/// Cave system:
+/// - Old walker/branch carvers removed.
+/// - New CC-Spline pipeline Phase 1 added (Highway intent generation only).
+///   Phase 1 produces debug lines only (no carving).
+///
+/// Debug:
+/// - Legacy cave debug overlay removed.
+/// - We'll implement a terrain-only debug overlay later using the same pipeline pattern.
 /// </summary>
-
 public partial class WorldGenerator : Node
 {
     // --- WORLD SIZE (TILES) ---
@@ -20,57 +30,133 @@ public partial class WorldGenerator : Node
 
     private const float SURFACE_STEP_UP_CHANCE = 0.2f;      // -1 in Y (surface goes up)
     private const float SURFACE_STEP_FLAT_CHANCE = 0.6f;    // 0 in Y
-    private const float SURFACE_STEP_DOWN_CHANCE = 0.2f;    // +1 in Y (surface goes down)
 
     private const int SMOOTHING_PASSES = 2;
     private const int MAX_STEP_DELTA = 2;
 
     // --- MATERIAL LAYERS ---
-    private const int DIRT_DEPTH = 25;                       // Tiles below surface that remain dirt
+    private const int DIRT_DEPTH = 25;                      // Tiles below surface that remain dirt
     private const int BEDROCK_THICKNESS = 3;                // Tiles at bottom that are bedrock
 
-    private System.Collections.Generic.List<Godot.Collections.Array<Vector2>> _caveBackbonePaths = new();
-    public System.Collections.Generic.IReadOnlyList<Godot.Collections.Array<Vector2>> CaveBackbonePaths => _caveBackbonePaths;
-
+    // --- TILE SIZE (PX) ---
+    // Used for spawning and cave debug overlay conversion.
+    private const int TILE_SIZE = 32;
 
     // Optional seed to repeat worlds (0 = random)
     [Export] private int _seed = 0;
-    
+
     [Export] private CharacterBody2D _player;
 
     // Where to spawn horizontally (tile coords). Default: middle of map.
     [Export] private int _spawnX = -1;
 
-    // Atlas coordinates (x,y) for each tile type in atlas
-    private static readonly Vector2I DIRT_ATLAS = new Vector2I(0, 0);
-    private static readonly Vector2I STONE_ATLAS = new Vector2I(1, 0);
-    private static readonly Vector2I BEDROCK_ATLAS = new Vector2I(2, 0);
+    // Cave generation config asset (Resource pipeline).
+    [Export]
+    public CaveGenConfigResource CaveConfig { get; set; }
+
+    // New cave debug overlay (Phase 1 draws intent lines).
+    // Assign in inspector if you want to see the Phase 1 debug.
+    [Export]
+    public CaveDebugOverlay CaveDebugOverlay { get; set; }
+
+    // === REGENERATE CONTROLS ===
+    [Export] private bool _incrementSeedOnRegenerate = false;
+    [Export] private bool _regenerateCavesOnReady = true;
 
     // --- REFERENCES ---
     private WorldData _world;
-
     public WorldData World => _world;
+
     public int WorldWidthTiles => WORLD_WIDTH;
     public int WorldHeightTiles => WORLD_HEIGHT;
 
-    // Internal RNG
+    // Internal RNG (terrain generation).
     private RandomNumberGenerator _rng;
     private int[] _surfaceY;
+
+    // The resolved seed actually used this run (important when _seed == 0).
+    private int _resolvedSeed;
+
+    private bool _caveOverlayEnabled = true;
+    private CaveDebugDrawFlags _cycleFlags = CaveDebugDrawFlags.IntentLines;
 
     public override void _Ready()
     {
         GetTree().Root.GrabFocus();
 
+        // Initialise RNG (terrain generation uses this RNG).
         _rng = new RandomNumberGenerator();
-        if (_seed == 0) _rng.Randomize();
-        else _rng.Seed = (ulong)_seed;
+        if (_seed == 0)
+        {
+            _rng.Randomize();
+            _resolvedSeed = unchecked((int)_rng.Seed);
+        }
+        else
+        {
+            _rng.Seed = unchecked((ulong)_seed);
+            _resolvedSeed = _seed;
+        }
+
+        if (CaveConfig == null)
+        {
+            GD.PushError("WorldGenerator: CaveConfig is not assigned.");
+            return;
+        }
+
+        WarnIfMissingInputAction("debug_cave_regenerate");
+        WarnIfMissingInputAction("debug_cave_regenerate_new_seed");
+        WarnIfMissingInputAction("debug_cave_overlay_toggle");
+        WarnIfMissingInputAction("debug_cave_overlay_cycle");
+
+        GD.Print($"WorldGenerator: Using Seed={_resolvedSeed} (Original Export Seed={_seed})");
+        GD.Print($"WorldGenerator: Loaded CaveGen config. Highway Start band = {CaveConfig.Highway.StartYMinFrac} - {CaveConfig.Highway.StartYMaxFrac}");
+        GD.Print($"WorldGenerator: Loaded CaveGen config. Highway End band = {CaveConfig.Highway.EndYMinFrac} - {CaveConfig.Highway.EndYMaxFrac}");
 
         GenerateWorldDataOnly();
+
+        if (_regenerateCavesOnReady)
+        {
+            // Phase 1 cave generation (debug-only).
+            GenerateCavesPhase1_IntentsOnly();
+        }
+
         SpawnPlayerOnSurface();
     }
 
+    public override void _UnhandledInput(InputEvent e)
+    {
+        // Regenerate caves (force new seed)
+        if (Input.IsActionJustPressed("debug_cave_regenerate_new_seed"))
+        {
+            RegenerateCavesPhase1(incrementSeed: true);
+            return;
+        }
+
+        // Regenerate caves (same seed)
+        if (Input.IsActionJustPressed("debug_cave_regenerate"))
+        {
+            RegenerateCavesPhase1(incrementSeed: _incrementSeedOnRegenerate);
+            return;
+        }
+
+        // Toggle overlay
+        if (Input.IsActionJustPressed("debug_cave_overlay_toggle"))
+        {
+            ToggleCaveOverlay();
+            return;
+        }
+
+        // Cycle overlay flags
+        if (Input.IsActionJustPressed("debug_cave_overlay_cycle"))
+        {
+            CycleCaveOverlayFlags();
+            return;
+        }
+    }
+
     /// <summary>
-    /// Generates and renders the world into the TileMapLayer.
+    /// Generates world terrain into WorldData (data-only).
+    /// Rendering is handled by ChunkRenderer elsewhere.
     /// </summary>
     private void GenerateWorldDataOnly()
     {
@@ -84,18 +170,21 @@ public partial class WorldGenerator : Node
 
             for (int y = 0; y < WORLD_HEIGHT; y++)
             {
+                // Bedrock band at bottom.
                 if (y >= WORLD_HEIGHT - BEDROCK_THICKNESS)
                 {
                     _world.SetTerrain(x, y, TileIds.BEDROCK);
                     continue;
                 }
 
+                // Air above surface.
                 if (y < surface)
                 {
                     _world.SetTerrain(x, y, TileIds.AIR);
                     continue;
                 }
 
+                // Dirt layer then stone below.
                 int depthBelowSurface = y - surface;
 
                 _world.SetTerrain(
@@ -105,79 +194,32 @@ public partial class WorldGenerator : Node
                 );
             }
         }
+    }
 
-        _caveBackbonePaths.Clear();
-
-        // --- CARVE CAVES (data-only) ---
-        var backboneSettings = new CaveCarverBackbone.Settings
-        {
-            BackboneWalkers = 10,
-            StepsMin = 350,
-            StepsMax = 900,
-            MinY = MAX_SURFACE_Y - 10,
-            MaxYPadding = 8,
-            MinRadius = 1,
-            MaxRadius = 2,
-            HorizontalBias = 0.85f,
-            SlopeChance = 0.3f,
-            TurnAroundChance = 0.01f,
-            RecordPaths = true,
-            PathSampleStep = 4
-        };
-
-        CaveCarverBackbone.CarveBackbone(
-            world: _world,
-            rng: _rng,
-            worldWidthTiles: WORLD_WIDTH,
-            worldHeightTiles: WORLD_HEIGHT,
-            bedrockThickness: BEDROCK_THICKNESS,
-            s: backboneSettings,
-            outPaths: _caveBackbonePaths
+    /// <summary>
+    /// Phase 1 (CC-Spline-1): Generate highway anchors + endpoints (intents only).
+    /// No carving, no splines, just debug intent lines (via CaveDebugOverlayNode).
+    /// </summary>
+    private void GenerateCavesPhase1_IntentsOnly()
+    {
+        CaveGenRequest req = new CaveGenRequest(
+            mapWidth: WORLD_WIDTH,
+            mapHeight: WORLD_HEIGHT,
+            seed: _resolvedSeed,
+            configResource: CaveConfig
         );
 
-        var connectorSettings = new CaveCarverConnectors.Settings
+        CaveGenResult result = CaveGenerator.GeneratePhase1(req);
+
+        if (CaveDebugOverlay != null)
         {
-            Connectors = 50,
-            MaxLength = 26,
-            VerticalPhaseRatio = 0.65f,
-            SearchRadiusForStart = 3,
-            MaxStartSearchTries = 40,
-            Radius = 1,
-            MinY = backboneSettings.MinY,
-            MaxYPadding = backboneSettings.MaxYPadding
-        };
+            // Ensure overlay uses the same tile size your world uses.
+            CaveDebugOverlay.PixelsPerTile = TILE_SIZE;
+            CaveDebugOverlay.SetResult(result);
+            CaveDebugOverlay.Visible = _caveOverlayEnabled;
+        }
 
-        CaveCarverConnectors.CarveConnectors(
-            world: _world,
-            rng: _rng,
-            worldWidthTiles: WORLD_WIDTH,
-            worldHeightTiles: WORLD_HEIGHT,
-            bedrockThickness: BEDROCK_THICKNESS,
-            s: connectorSettings
-        );
-
-        var branchSettings = new CaveCarverBranches.Settings
-        {
-            Branches = 140,
-            MinLength = 10,
-            MaxLength = 45,
-            HorizontalBias = 0.78f,
-            SlopeChance = 0.06f,
-            SearchRadiusForStart = 3,
-            MaxStartSearchTries = 60,
-            Radius = 1,
-            MinY = backboneSettings.MinY,
-            MaxYPadding = backboneSettings.MaxYPadding            
-        };
-
-        CaveCarverBranches.CarveBranches(
-            world: _world,
-            rng: _rng,
-            worldWidthTiles: WORLD_WIDTH,
-            worldHeightTiles: WORLD_HEIGHT,
-            bedrockThickness: BEDROCK_THICKNESS,
-            s: branchSettings
-        );
+        GD.Print($"WorldGenerator: Phase 1 generated {result.HighwayIntents.Count} highway intents.");
     }
 
     private void SpawnPlayerOnSurface()
@@ -200,12 +242,7 @@ public partial class WorldGenerator : Node
         int surfaceY = _surfaceY[spawnX];
 
         // Spawn the player a little ABOVE the surface so they fall onto it cleanly.
-        // (surface tile is solid at y == surfaceY, so we put the player above that)
         int spawnTileY = surfaceY - 2;
-
-        // Convert tile coords to world pixels.
-        // TileMapLayer uses tile size from the TileSet.
-        const int TILE_SIZE = 32;
 
         // Place player roughly centered in the tile.
         Vector2 spawnPos = new Vector2(
@@ -219,9 +256,8 @@ public partial class WorldGenerator : Node
         GD.Print($"WorldGenerator: Spawned player at tile ({spawnX},{spawnTileY}) px {spawnPos}");
     }
 
-
     /// <summary>
-    /// Creates a rolling surface using a random walk, then optionally smooths it
+    /// Creates a rolling surface using a random walk, then optionally smooths it.
     /// </summary>
     private int[] BuildSurfaceHeightmap()
     {
@@ -234,10 +270,8 @@ public partial class WorldGenerator : Node
         // Random walk across X
         for (int x = 1; x < WORLD_WIDTH; x++)
         {
-            // Pick a step based on probabilites
             float roll = _rng.Randf();
 
-            // Up means surface Y decreases (goes up visually)
             int step;
             if (roll < SURFACE_STEP_UP_CHANCE)
                 step = -1;
@@ -248,10 +282,8 @@ public partial class WorldGenerator : Node
 
             int next = current + step;
 
-            // Clamp to surface bounds
             next = Mathf.Clamp(next, MIN_SURFACE_Y, MAX_SURFACE_Y);
 
-            // Limit sudden cliffs
             int delta = next - current;
             delta = Mathf.Clamp(delta, -MAX_STEP_DELTA, MAX_STEP_DELTA);
             next = current + delta;
@@ -260,10 +292,8 @@ public partial class WorldGenerator : Node
             heights[x] = current;
         }
 
-        // Seamless ends
         MakeHeightmapSeamless(heights);
 
-        // Smooth the heightmap to reduce jaggedness
         for (int pass = 0; pass < SMOOTHING_PASSES; pass++)
         {
             heights = SmoothHeightmap(heights);
@@ -273,7 +303,7 @@ public partial class WorldGenerator : Node
         return heights;
     }
 
-    //// <summary>
+    /// <summary>
     /// Smooths a heightmap by averaging each point with its immediate neighbours,
     /// treating the array as CIRCULAR so x=0 neighbours x=last (wraparound planet).
     /// </summary>
@@ -284,7 +314,6 @@ public partial class WorldGenerator : Node
 
         for (int x = 0; x < input.Length; x++)
         {
-            // Wrap neighbours so the seam is smoothed consistently.
             int leftIndex = (x == 0) ? lastIndex : (x - 1);
             int rightIndex = (x == lastIndex) ? 0 : (x + 1);
 
@@ -292,10 +321,8 @@ public partial class WorldGenerator : Node
             int mid = input[x];
             int right = input[rightIndex];
 
-            // Average and round
             int avg = Mathf.RoundToInt((left + mid + right) / 3.0f);
 
-            // Keep within bounds
             output[x] = Mathf.Clamp(avg, MIN_SURFACE_Y, MAX_SURFACE_Y);
         }
 
@@ -308,13 +335,10 @@ public partial class WorldGenerator : Node
     /// </summary>
     private void MakeHeightmapSeamless(int[] heights)
     {
-        // If the endpoints already match, we're done.
         int lastIndex = heights.Length - 1;
         int delta = heights[lastIndex] - heights[0];
         if (delta == 0) return;
 
-        // Linearly distribute the delta across the whole width so the last equals the first.
-        // This avoids a hard correction at just one column.
         for (int x = 0; x < heights.Length; x++)
         {
             float t = (heights.Length == 1) ? 0f : (x / (float)lastIndex);
@@ -322,7 +346,72 @@ public partial class WorldGenerator : Node
             heights[x] = Mathf.Clamp(heights[x] - offset, MIN_SURFACE_Y, MAX_SURFACE_Y);
         }
 
-        // Ensure exact equality at the seam after rounding/clamping.
         heights[lastIndex] = heights[0];
+    }
+
+    private void CycleCaveOverlayFlags()
+    {
+        if (CaveDebugOverlay == null)
+        {
+            GD.Print("WorldGenerator: No CaveDebugOverlay assigned, cannot cycle flags.");
+            return;
+        }
+
+        // Cycle order:
+        // 1) Lines
+        // 2) Lines + Anchors
+        // 3) Lines + Anchors + Endpoints
+        // 4) Lines + Anchors + Endpoints + Labels
+        // then back to Lines
+        if (_cycleFlags == CaveDebugDrawFlags.IntentLines)
+            _cycleFlags = CaveDebugDrawFlags.IntentLines | CaveDebugDrawFlags.Anchors;
+        else if (_cycleFlags == (CaveDebugDrawFlags.IntentLines | CaveDebugDrawFlags.Anchors))
+            _cycleFlags = CaveDebugDrawFlags.IntentLines | CaveDebugDrawFlags.Anchors | CaveDebugDrawFlags.Endpoints;
+        else if (_cycleFlags == (CaveDebugDrawFlags.IntentLines | CaveDebugDrawFlags.Anchors | CaveDebugDrawFlags.Endpoints))
+            _cycleFlags = CaveDebugDrawFlags.Phase1Default;
+        else
+            _cycleFlags = CaveDebugDrawFlags.IntentLines;
+
+        CaveDebugOverlay.Flags = _cycleFlags;
+        CaveDebugOverlay.QueueRedraw();
+
+        GD.Print($"WorldGenerator: Cave overlay flags -> {_cycleFlags}");
+    }
+
+    private void RegenerateCavesPhase1(bool incrementSeed)
+    {
+        if (incrementSeed)
+        {
+            GD.Print($"WorldGenerator: Previous Seed -> {_resolvedSeed}");
+            _rng.Randomize();
+            _resolvedSeed = unchecked((int)_rng.Seed);
+            GD.Print($"WorldGenerator: New Seed -> {_resolvedSeed}");
+        }
+        else
+        {
+            GD.Print($"WorldGenerator: Using Same Seed -> {_resolvedSeed}");
+        }
+
+        GenerateCavesPhase1_IntentsOnly();
+    }
+
+    private void ToggleCaveOverlay()
+        {
+        _caveOverlayEnabled = !_caveOverlayEnabled;
+
+        if (CaveDebugOverlay != null)
+        {
+            CaveDebugOverlay.Visible = _caveOverlayEnabled;
+        }
+
+        GD.Print($"WorldGenerator: Cave overlay {(_caveOverlayEnabled ? "ENABLED" : "DISABLED")}");
+    }
+
+    private static void WarnIfMissingInputAction(string actionName)
+    {
+        if (!InputMap.HasAction(actionName))
+        {
+            GD.PushWarning($"WorldGenerator: Missing InputMap action '{actionName}'. Add it in Project Settings -> Input Map.");
+        }
     }
 }

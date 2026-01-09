@@ -1,14 +1,16 @@
-[gd_scene load_steps=11 format=3 uid="uid://bawf4q07xukbw"]
+[gd_scene load_steps=13 format=3 uid="uid://bawf4q07xukbw"]
 
 [ext_resource type="PackedScene" uid="uid://cijtbnt6jvk5n" path="res://Scenes/UI.tscn" id="1_5cjrv"]
 [ext_resource type="Script" uid="uid://dep0saoy3vw66" path="res://Scripts/WorldGenerator.cs" id="1_j0p05"]
 [ext_resource type="Script" uid="uid://bo1ox77e1twpo" path="res://Scripts/PlayerController.cs" id="2_gjpho"]
 [ext_resource type="Script" uid="uid://bhacfgukroyea" path="res://Scripts/SpringCamera2D.cs" id="3_p70al"]
+[ext_resource type="Resource" uid="uid://dgqid16xohs7n" path="res://Scripts/CaveGen/Config/Defaults/CaveGen_Default.tres" id="4_kn06e"]
 [ext_resource type="Script" uid="uid://8ksf8ok1lr8q" path="res://Scripts/BlockEditController.cs" id="6_y7y61"]
 [ext_resource type="Script" uid="uid://dlucb2a7xqhdp" path="res://Scripts/ChunkRenderer.cs" id="7_q2d71"]
 [ext_resource type="TileSet" uid="uid://dvakk6inkbe0i" path="res://Assets/Tiles/TerrainTileSet.tres" id="7_uo7di"]
 [ext_resource type="Script" uid="uid://drja1jdqtsinb" path="res://Scripts/FreeCameraToggle.cs" id="8_uo7di"]
-[ext_resource type="Script" uid="uid://wvhvj3bx0wo0" path="res://Scripts/WorldDebugOverlay.cs" id="9_kn06e"]
+[ext_resource type="Script" uid="uid://ctdhd4tuyi7ov" path="res://Scripts/CaveGen/Debug/CaveDebugOverlay.cs" id="9_kn06e"]
+[ext_resource type="Script" uid="uid://bo2vji7d5f78d" path="res://Scripts/TerrainGen/Debug/TerrainDebugOverlay.cs" id="10_7yo87"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_o3h3i"]
 
@@ -42,9 +44,11 @@ script = ExtResource("3_p70al")
 
 [node name="Systems" type="Node" parent="."]
 
-[node name="WorldGenerator" type="Node" parent="Systems" node_paths=PackedStringArray("_player")]
+[node name="WorldGenerator" type="Node" parent="Systems" node_paths=PackedStringArray("_player", "CaveDebugOverlay")]
 script = ExtResource("1_j0p05")
 _player = NodePath("../../Entities/Player")
+CaveConfig = ExtResource("4_kn06e")
+CaveDebugOverlay = NodePath("../CaveDebugOverlay")
 
 [node name="GameState" type="Node" parent="Systems"]
 
@@ -58,6 +62,8 @@ cameraPath = NodePath("../../Entities/Player/SpringCamera2D")
 script = ExtResource("7_q2d71")
 worldGeneratorPath = NodePath("../WorldGenerator")
 cameraPath = NodePath("../../Entities/Player/SpringCamera2D")
+RadiusChunksX = 8
+RadiusChunksY = 7
 TileSet = ExtResource("7_uo7di")
 
 [node name="FreeCameraToggle" type="Node" parent="Systems"]
@@ -65,12 +71,19 @@ script = ExtResource("8_uo7di")
 playerControllerPath = NodePath("../../Entities/Player")
 springCameraPath = NodePath("../../Entities/Player/SpringCamera2D")
 freeCameraPath = NodePath("../../FreeCamCamera2D")
+MinZoom = 0.05
+MaxZoom = 2.0
+ZoomStep = 0.01
 
-[node name="WorldDebugOverlay" type="Node2D" parent="Systems"]
+[node name="CaveDebugOverlay" type="Node2D" parent="Systems"]
 script = ExtResource("9_kn06e")
+
+[node name="TerrainDebugOverlay" type="Node2D" parent="Systems"]
+script = ExtResource("10_7yo87")
 worldGeneratorPath = NodePath("../WorldGenerator")
 chunkRendererPath = NodePath("../ChunkRenderer")
-ShowChunkCoords = true
+LineWidth = 3.0
+FontSize = 32
 
 [node name="UI" type="CanvasLayer" parent="."]
 
